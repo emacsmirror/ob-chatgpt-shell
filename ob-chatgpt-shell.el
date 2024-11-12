@@ -61,7 +61,8 @@
 (cl-defun ob-chatgpt-shell--post-assistant (&key body params)
   "Post assistant query with BODY and PARAMS.
 
-Assistant queries leverage cloud context using :assistant-id, :file-id, and :thread-id."
+Assistant queries leverage cloud context using :assistant-id, :file-id,
+and :thread-id."
   (unless body
     (error "Missing mandatory :body param"))
   (unless params
