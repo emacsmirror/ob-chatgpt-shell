@@ -1,0 +1,111 @@
+* ob-chatgpt-shell
+
+Evaluate ChatGPT shell text as Emacs org babel blocks
+
+* Setup
+
+Load =(require 'ob-chatgpt-shell)= and invoke =(ob-chatgpt-shell-setup)=.
+
+* Usage
+
+#+begin_src org
+  ,#+begin_src chatgpt-shell
+    Hello
+  ,#+end_src
+
+  ,#+RESULTS:
+  : Hi there! How can I assist you today?
+#+end_src
+
+** :version
+
+Use =:version= to specify "gpt-4", "gpt-3.5-turbo", or something else.
+
+#+begin_src org
+  ,#+begin_src chatgpt-shell :version "gpt-4"
+   Hello
+  ,#+end_src
+
+  ,#+RESULTS:
+  Hello! How can I help you today?
+#+end_src
+
+** :system
+
+Use =:system= to set the system prompt.
+
+#+begin_src org
+  ,#+begin_src chatgpt-shell :system "always respond like a pirate"
+    hello
+  ,#+end_src
+
+  ,#+RESULTS:
+  Ahoy there, me hearty! How be ye today?
+#+end_src
+
+** :temperature
+
+Use =:temperature= to set the [[https://platform.openai.com/docs/api-reference/completions/create#completions/create-temperature][temperature]] parameter.
+
+#+begin_src org
+  ,#+begin_src chatgpt-shell :temperature 0.3
+    hello
+  ,#+end_src
+#+end_src
+
+** :context
+
+Use =:context t= to include all prior context in current buffer.
+
+#+begin_src org
+  ,#+begin_src chatgpt-shell
+    tell me a random day of the week
+  ,#+end_src
+
+  ,#+RESULTS:
+  Wednesday
+
+  ,#+begin_src chatgpt-shell :system "always respond like a pirate"
+    hello
+  ,#+end_src
+
+  ,#+RESULTS:
+  Ahoy there, me hearty! How be ye today?
+
+  ,#+begin_src chatgpt-shell :context t
+    what was the day you told me and what greeting?
+  ,#+end_src
+
+  ,#+RESULTS:
+  The day I told you was Wednesday, and the greeting I used was "Ahoy there, me hearty! How be ye today?"
+#+end_src
+
+If you'd like to cherrypick which blocks are part of a given context, add
+=:context CONTEXT-NAME= to each block where CONTEXT-NAME is any string. When
+this form is used only source blocks with same =CONTEXT-NAME= will be included
+as opposed to every previous block when using =:context t=.
+
+The example below shows how two different contexts can be interleaved.
+
+#+begin_src org
+  ,#+begin_src chatgpt-shell :context shakespeare :system "alway speak like shakespeare"
+  How do you do?
+  ,#+end_src
+
+  #+RESULTS:
+  How dost thou fare?
+
+  ,#+begin_src chatgpt-shell :context robot :system "always speak like a sci fi movie robot"
+  How do you do?
+  ,#+end_src
+
+  ,#+RESULTS:
+  Greetings, human. I am functioning at optimal capacity. How may I assist you in your endeavors today?
+
+  ,#+begin_src chatgpt-shell :context shakespeare
+  What did you call me?
+  ,#+end_src
+
+  ,#+RESULTS:
+  Mine apologies if mine words hath caused confusion. I merely addressed thee as 'sir' or 'madam', a term of respect in the language of the Bard. Pray, how may I assist thee further?
+#+end_src
