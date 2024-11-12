@@ -363,7 +363,8 @@ associated costs)."
       (setq message-id (ob-chatgpt-shell--add-thread-message :thread-id thread-id
                                                              :file-id file-id
                                                              :prompt prompt))
-      (message "Running thread...")
+      (setq created (append created (list (concat "message-id: "
+                                                  message-id))))
       (setq run-id (ob-chatgpt-shell--run-thread :thread-id thread-id
                                                  :assistant-id assistant-id))
       (message "Waiting for response...")
