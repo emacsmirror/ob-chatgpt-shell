@@ -3,7 +3,7 @@
 ;; Copyright (C) Alvaro Ramirez
 
 ;; Author: Alvaro Ramirez
-;; URL: https://github.com/xenodium/chatgpt-shell
+;; URL: https://github.com/xenodium/ob-chatgpt-shell
 ;; Version: 0.36.1
 ;; Package-Requires: ((emacs "27.1") (chatgpt-shell "1.22.1"))
 
@@ -76,11 +76,11 @@ Assistant queries leverage cloud context using :assistant-id, :file-id, and :thr
     (message "Can't use :temperature with either :assistant-id, :file-id, or :thread-id"))
   (when (map-elt params :preflight)
     (message "Can't use :preflight with either :assistant-id, :file-id, or :thread-id"))
-  (ob-chatgpt--query-file :prompt body
-                          :file-id (map-elt params :file-id)
-                          :file (map-elt params :file)
-                          :assistant-id (map-elt params :assistant-id)
-                          :thread-id (map-elt params :thread-id)))
+  (ob-chatgpt-shell--query-file :prompt body
+                                :file-id (map-elt params :file-id)
+                                :file (map-elt params :file)
+                                :assistant-id (map-elt params :assistant-id)
+                                :thread-id (map-elt params :thread-id)))
 
 (defun org-babel-execute:chatgpt-shell (body params)
   "Execute a block of ChatGPT prompt in BODY with org-babel header PARAMS.
@@ -170,7 +170,7 @@ each src block have a :context arg with a value matching the CONTEXT-NAME."
            (cons 'role "assistant")
            (cons 'content (map-elt src-block 'result)))
           context)))
-     (ob-chatgpt--relevant-source-blocks-before-current context-name))
+     (ob-chatgpt-shell--relevant-source-blocks-before-current context-name))
     (nreverse context)))
 
 (defun ob-chatgpt-shell-setup ()
@@ -180,7 +180,7 @@ each src block have a :context arg with a value matching the CONTEXT-NAME."
                                        '((chatgpt-shell . t))))
   (add-to-list 'org-src-lang-modes '("chatgpt-shell" . text)))
 
-(defun ob-chatgpt--relevant-source-blocks-before-current (context-name)
+(defun ob-chatgpt-shell--relevant-source-blocks-before-current (context-name)
   "Return all previous source blocks relative to the current block.
 
 Including only those with a :context arg with a value matching CONTEXT-NAME.
@@ -195,9 +195,9 @@ If CONTEXT-NAME is nil then return all previous source blocks."
                            (string-equal (map-elt (map-elt src 'parameters '()) :context)
                                          context-name))
                        (< (map-elt src 'start) current-block-pos)))
-                (ob-chatgpt--all-source-blocks))))
+                (ob-chatgpt-shell--all-source-blocks))))
 
-(defun ob-chatgpt--all-source-blocks ()
+(defun ob-chatgpt-shell--all-source-blocks ()
   "Return all source blocks in buffer."
   (org-element-map (org-element-parse-buffer) '(src-block fixed-width)
     (lambda (element)
@@ -216,7 +216,7 @@ If CONTEXT-NAME is nil then return all previous source blocks."
                                (goto-char (org-babel-where-is-src-block-result))
                                (org-babel-read-result)))))))))
 
-(cl-defun ob-chatgpt--upload-file (&key purpose path)
+(cl-defun ob-chatgpt-shell--upload-file (&key purpose path)
   "Upload file at PATH and describe PURPOSE."
   (unless purpose
     (error "Missing mandatory :purpose param"))
@@ -243,7 +243,7 @@ If CONTEXT-NAME is nil then return all previous source blocks."
              (success (map-elt result :success)))
     (map-elt result :output)))
 
-(cl-defun ob-chatgpt--make-thread ()
+(cl-defun ob-chatgpt-shell--make-thread ()
   "Create an OpenAI thread."
   (interactive)
   (let* ((result (shell-maker-make-http-request
@@ -267,7 +267,7 @@ If CONTEXT-NAME is nil then return all previous source blocks."
       (error "No thread ID found"))
     output))
 
-(cl-defun ob-chatgpt--add-thread-message (&key thread-id file-id prompt)
+(cl-defun ob-chatgpt-shell--add-thread-message (&key thread-id file-id prompt)
   "Add a prompt and file message to an OpenAI assistant thread.
 
 Requires message PROMPT, THREAD-ID, and FILE-ID."
@@ -302,7 +302,7 @@ Requires message PROMPT, THREAD-ID, and FILE-ID."
       (error "No message ID found"))
     output))
 
-(cl-defun ob-chatgpt--query-file (&key prompt file-id file assistant-id thread-id)
+(cl-defun ob-chatgpt-shell--query-file (&key prompt file-id file assistant-id thread-id)
   "Query a file via assistant using PROMPT.
 
 Must provide either a FILE path or FILE-ID.
@@ -337,7 +337,7 @@ associated costs)."
           (error "Invalid assistant instructions")))
       (unless file-id
         (message "Uploading file...")
-        (setq file-id (ob-chatgpt--upload-file
+        (setq file-id (ob-chatgpt-shell--upload-file
                        :purpose "assistants"
                        :path (or file
                                  (read-file-name "Select file: " nil nil t)
@@ -346,29 +346,29 @@ associated costs)."
                                                     file-id)))))
       (unless assistant-id
         (message "Creating assistant...")
-        (setq assistant-id (ob-chatgpt--make-assistant
+        (setq assistant-id (ob-chatgpt-shell--make-assistant
                             :name assistant-name
                             :instructions assistant-instructions))
         (setq created (append created (list (concat "assistant-id: "
                                                     assistant-id)))))
       (unless thread-id
         (message "Creating thread...")
-        (setq thread-id (ob-chatgpt--make-thread))
+        (setq thread-id (ob-chatgpt-shell--make-thread))
         (setq created (append created (list (concat "thread-id: "
                                                     thread-id)))))
       (kill-new (string-join created " ")))
     (when (and file-id assistant-id thread-id)
       (message "Adding prompt...")
-      (setq message-id (ob-chatgpt--add-thread-message :thread-id thread-id
-                                                       :file-id file-id
-                                                       :prompt prompt))
+      (setq message-id (ob-chatgpt-shell--add-thread-message :thread-id thread-id
+                                                             :file-id file-id
+                                                             :prompt prompt))
       (message "Running thread...")
-      (setq run-id (ob-chatgpt--run-thread :thread-id thread-id
-                                           :assistant-id assistant-id))
+      (setq run-id (ob-chatgpt-shell--run-thread :thread-id thread-id
+                                                 :assistant-id assistant-id))
       (message "Waiting for response...")
-      (if (string= (ob-chatgpt--wait-for-run-completion :thread-id thread-id :run-id run-id)
+      (if (string= (ob-chatgpt-shell--wait-for-run-completion :thread-id thread-id :run-id run-id)
                    "completed")
-          (let-alist (ob-chatgpt--fetch-thread :thread-id thread-id)
+          (let-alist (ob-chatgpt-shell--fetch-thread :thread-id thread-id)
             (let-alist (seq-first .data)
               (let-alist (seq-find (lambda (elt)
                                      (string= (alist-get 'type elt) "text"))
@@ -380,7 +380,7 @@ associated costs)."
                 response)))
         (error "Couldn't run chat")))))
 
-(cl-defun ob-chatgpt--fetch-thread (&key thread-id)
+(cl-defun ob-chatgpt-shell--fetch-thread (&key thread-id)
   "Fetch OpenAI assistant thread with THREAD-ID."
   (interactive)
   (let* ((result (shell-maker-make-http-request
@@ -398,18 +398,18 @@ associated costs)."
         thread
       (error "Couldn't fetch thread"))))
 
-(cl-defun ob-chatgpt--wait-for-run-completion (&key thread-id run-id)
+(cl-defun ob-chatgpt-shell--wait-for-run-completion (&key thread-id run-id)
   "Wait for OpenAI assistant thread run with THREAD-ID and RUN-ID."
   (interactive)
   (let ((status "queued"))
     (while (or (string= status "queued")
                (string= status "in_progress")
                (string= status "cancelling"))
-      (let-alist (ob-chatgpt--fetch-run :thread-id thread-id :run-id run-id)
+      (let-alist (ob-chatgpt-shell--fetch-run :thread-id thread-id :run-id run-id)
         (setq status .status)))
     status))
 
-(cl-defun ob-chatgpt--fetch-run (&key thread-id run-id)
+(cl-defun ob-chatgpt-shell--fetch-run (&key thread-id run-id)
   "Fetch OpenAI assistant thread run with THREAD-ID and RUN-ID."
   (interactive)
   (let* ((result (shell-maker-make-http-request
@@ -427,7 +427,7 @@ associated costs)."
         run
       (error "Couldn't fetch run"))))
 
-(cl-defun ob-chatgpt--run-thread (&key thread-id assistant-id temperature)
+(cl-defun ob-chatgpt-shell--run-thread (&key thread-id assistant-id temperature)
   "Run OpenAI assistant thread with THREAD-ID, ASSISTANT-ID, and TEMPERATURE."
   (interactive)
   (unless thread-id
@@ -459,7 +459,7 @@ associated costs)."
       (error "No run ID found"))
     output))
 
-(cl-defun ob-chatgpt--make-assistant (&key name instructions)
+(cl-defun ob-chatgpt-shell--make-assistant (&key name instructions)
   "Create an OpenAI assistant with NAME and INSTRUCTIONS."
   (interactive)
   (unless name
