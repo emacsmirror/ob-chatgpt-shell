@@ -2,6 +2,13 @@
 
 Evaluate ChatGPT shell text as Emacs org babel blocks
 
+For related packages, see:
+
+- [[https://github.com/xenodium/chatgpt-shell][chatgpt-shell]]: An Emacs shell for OpenAI's ChatGPT.
+- [[https://github.com/xenodium/dall-e-shell][dall-e-shell]]: An Emacs shell for OpenAI's DALL-E.
+- [[https://github.com/xenodium/ob-dall-e-shell][ob-dall-e-shell]]: Evaluate DALL-E shell blocks in Emacs org babel blocks.
+- [[https://github.com/xenodium/shell-maker][shell-maker]]: Create Emacs shells backed by either local or cloud services.
+
 ** Support this effort
 
 If you're finding =dall-e-shell= useful, help make the project sustainable and consider ✨[[https://github.com/sponsors/xenodium][sponsoring]]✨.
