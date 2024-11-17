@@ -108,31 +108,28 @@ This function is called by `org-babel-execute-src-block'"
   (if (ob-chatgpt-shell--assistant-post-p params)
       (ob-chatgpt-shell--post-assistant :body body
                                         :params params)
-    (let* ((context
-            (when-let ((context-name (map-elt params :context)))
-              (if (string-equal context-name "t")
-                  ;; If the context is `t' then collect all previous contexts
-                  (ob-chatgpt-shell--context)
-                ;; Otherwise only collect contexts with matching context-name
-                (ob-chatgpt-shell--context context-name))))
-           (messages
-            (vconcat ;; Convert to vector for json
-             (append
-              (when (and (map-elt params :system)
-                         (not (map-elt params :context)))
-                `(((role . "system")
-                   (content . ,(map-elt params :system)))))
-              context
-              `(((role . "user")
-                 (content . ,body)))))))
+    (let* ((context (when-let ((context-name (map-elt params :context)))
+                      (if (string-equal context-name "t")
+                          ;; If the context is `t' then collect all previous contexts
+                          (ob-chatgpt-shell--context :prompt body)
+                        ;; Otherwise only collect contexts with matching context-name
+                        (ob-chatgpt-shell--context :context-name context-name
+                                                   :prompt body))))
+           (system-prompt (when (and (map-elt params :system)
+                                     (not (map-elt params :context)))
+                            (map-elt params :system))))
       (if (map-elt params :preflight)
-          (pp (chatgpt-shell-make-request-data
-               :messages messages
-               :version (map-elt params :version)
+          (pp (chatgpt-shell--make-payload
+               :context (map-elt context :context)
+               :system-prompt (or system-prompt (map-elt context :system-prompt))
+               :version (or (map-elt params :version)
+                            (chatgpt-shell-model-version))
                :temperature (map-elt params :temperature)))
-        (chatgpt-shell-post-chatgpt-messages
-         :messages messages
-         :version (map-elt params :version)
+        (chatgpt-shell-post
+         :context (map-elt context :context)
+         :system-prompt (or system-prompt (map-elt context :system-prompt))
+         :version (or (map-elt params :version)
+                      (chatgpt-shell-model-version))
          :temperature (map-elt params :temperature))))))
 
 (defun ob-chatgpt-shell--assistant-post-p (params)
@@ -144,35 +141,30 @@ Assistant usage leverages cloud context."
       (map-elt params :file)
       (map-elt params :thread-id)))
 
-(defun ob-chatgpt-shell--context (&optional context-name)
+(cl-defun ob-chatgpt-shell--context (&key context-name prompt)
   "Return the context (what was asked and responded).
 
 This is used for matching previous src blocks.  If CONTEXT-NAME is provided
 each src block have a :context arg with a value matching the CONTEXT-NAME."
-  (let ((context '()))
+  (let ((context '())
+        (system-prompt))
     (mapc
      (lambda (src-block)
        (when-let ((system (and (seq-empty-p context) ;; Add system only if first item.
                                (or (map-elt (map-elt src-block 'parameters '()) :system)
                                    (map-elt org-babel-default-header-args:chatgpt-shell :system)))))
-         (push
-          (list
-           (cons 'role "system")
-           (cons 'content system))
-          context))
+         (setq system-prompt system))
        (push
-        (list
-         (cons 'role "user")
-         (cons 'content (map-elt src-block 'body)))
-        context)
-       (when (map-elt src-block 'result)
-         (push
-          (list
-           (cons 'role "assistant")
-           (cons 'content (map-elt src-block 'result)))
-          context)))
+        (cons (map-elt src-block 'body)
+              (map-elt src-block 'result))
+        context))
      (ob-chatgpt-shell--relevant-source-blocks-before-current context-name))
-    (nreverse context)))
+    (list
+     (cons :context (append
+                     (nreverse context)
+                     (when prompt
+                       (list (cons prompt nil)))))
+     (cons :system-prompt system-prompt))))
 
 (defun ob-chatgpt-shell-setup ()
   "Set up babel ChatGPT support."
@@ -230,7 +222,7 @@ If CONTEXT-NAME is nil then return all previous source blocks."
   (when-let ((result
               (shell-maker-make-http-request :async nil
                                              :url "https://api.openai.com/v1/files"
-                                             :headers `(,(funcall chatgpt-shell-auth-header))
+                                             :headers (chatgpt-shell-openai--make-headers)
                                              :fields `(,(format "purpose=%s" purpose)
                                                        ,(format "file=@%s" path))
                                              :filter (lambda (raw-response)
@@ -250,9 +242,8 @@ If CONTEXT-NAME is nil then return all previous source blocks."
   (let* ((result (shell-maker-make-http-request
                   :url "https://api.openai.com/v1/threads"
                   :data "" ;; force POST
-                  :headers (list "Content-Type: application/json"
-                                 "OpenAI-Beta: assistants=v2"
-                                 (funcall chatgpt-shell-auth-header))
+                  :headers (append (chatgpt-shell-openai--make-headers)
+                                   '("OpenAI-Beta: assistants=v2"))
                   :filter (lambda (raw-response)
                             (if-let* ((parsed (shell-maker--json-parse-string raw-response))
                                       (response (let-alist parsed
@@ -285,9 +276,8 @@ Requires message PROMPT, THREAD-ID, and FILE-ID."
                           (content . ,prompt)
                           (attachments . [((file_id . ,file-id)
                                            (tools .  [((type . "file_search"))]))]))
-                  :headers (list "Content-Type: application/json"
-                                 "OpenAI-Beta: assistants=v2"
-                                 (funcall chatgpt-shell-auth-header))
+                  :headers (append (chatgpt-shell-openai--make-headers)
+                                   '("OpenAI-Beta: assistants=v2"))
                   :filter (lambda (raw-response)
                             (if-let* ((parsed (shell-maker--json-parse-string raw-response))
                                       (response (let-alist parsed
@@ -387,9 +377,8 @@ associated costs)."
   (interactive)
   (let* ((result (shell-maker-make-http-request
                   :url (format "https://api.openai.com/v1/threads/%s/messages" thread-id)
-                  :headers (list "Content-Type: application/json"
-                                 "OpenAI-Beta: assistants=v2"
-                                 (funcall chatgpt-shell-auth-header))))
+                  :headers (append (chatgpt-shell-openai--make-headers)
+                                   '("OpenAI-Beta: assistants=v2"))))
          (success (map-elt result :success))
          (parsed (shell-maker--json-parse-string (map-elt result :output)))
          (thread (let-alist parsed
@@ -416,9 +405,8 @@ associated costs)."
   (interactive)
   (let* ((result (shell-maker-make-http-request
                   :url (format "https://api.openai.com/v1/threads/%s/runs/%s" thread-id run-id)
-                  :headers (list "Content-Type: application/json"
-                                 "OpenAI-Beta: assistants=v2"
-                                 (funcall chatgpt-shell-auth-header))))
+                  :headers (append (chatgpt-shell-openai--make-headers)
+                                   '("OpenAI-Beta: assistants=v2"))))
          (success (map-elt result :success))
          (parsed (shell-maker--json-parse-string (map-elt result :output)))
          (run (let-alist parsed
@@ -443,9 +431,8 @@ associated costs)."
                            (model . "gpt-4o"))
                          (when temperature
                            `((temperature . ,temperature))))
-                  :headers (list "Content-Type: application/json"
-                                 "OpenAI-Beta: assistants=v2"
-                                 (funcall chatgpt-shell-auth-header))
+                  :headers (append (chatgpt-shell-openai--make-headers)
+                                   '("OpenAI-Beta: assistants=v2"))
                   :filter (lambda (raw-response)
                             (if-let* ((parsed (shell-maker--json-parse-string raw-response))
                                       (response (let-alist parsed
@@ -474,9 +461,8 @@ associated costs)."
                           (instructions . ,instructions)
                           (tools .  [((type . "file_search"))])
                           (model . "gpt-4o"))
-                  :headers (list "Content-Type: application/json"
-                                 "OpenAI-Beta: assistants=v2"
-                                 (funcall chatgpt-shell-auth-header))
+                  :headers (append (chatgpt-shell-openai--make-headers)
+                                   '("OpenAI-Beta: assistants=v2"))
                   :filter (lambda (raw-response)
                             (if-let* ((parsed (shell-maker--json-parse-string raw-response))
                                       (response (let-alist parsed
