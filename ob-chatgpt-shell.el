@@ -108,13 +108,8 @@ This function is called by `org-babel-execute-src-block'"
   (if (ob-chatgpt-shell--assistant-post-p params)
       (ob-chatgpt-shell--post-assistant :body body
                                         :params params)
-    (let* ((context (when-let ((context-name (map-elt params :context)))
-                      (if (string-equal context-name "t")
-                          ;; If the context is `t' then collect all previous contexts
-                          (ob-chatgpt-shell--context :prompt body)
-                        ;; Otherwise only collect contexts with matching context-name
-                        (ob-chatgpt-shell--context :context-name context-name
-                                                   :prompt body))))
+    (let* ((context (ob-chatgpt-shell--context :context-name (map-elt params :context)
+                                               :prompt body))
            (system-prompt (when (and (map-elt params :system)
                                      (not (map-elt params :context)))
                             (map-elt params :system))))
@@ -145,20 +140,26 @@ Assistant usage leverages cloud context."
   "Return the context (what was asked and responded).
 
 This is used for matching previous src blocks.  If CONTEXT-NAME is provided
-each src block have a :context arg with a value matching the CONTEXT-NAME."
+each src block have a :context arg with a value matching the CONTEXT-NAME.
+
+PROMPT is acutomatically appended to the returned context."
   (let ((context '())
         (system-prompt))
-    (mapc
-     (lambda (src-block)
-       (when-let ((system (and (seq-empty-p context) ;; Add system only if first item.
-                               (or (map-elt (map-elt src-block 'parameters '()) :system)
-                                   (map-elt org-babel-default-header-args:chatgpt-shell :system)))))
-         (setq system-prompt system))
-       (push
-        (cons (map-elt src-block 'body)
-              (map-elt src-block 'result))
-        context))
-     (ob-chatgpt-shell--relevant-source-blocks-before-current context-name))
+    (when context-name
+      (mapc
+       (lambda (src-block)
+         (when-let ((system (and (seq-empty-p context) ;; Add system only if first item.
+                                 (or (map-elt (map-elt src-block 'parameters '()) :system)
+                                     (map-elt org-babel-default-header-args:chatgpt-shell :system)))))
+           (setq system-prompt system))
+         (push
+          (cons (map-elt src-block 'body)
+                (map-elt src-block 'result))
+          context))
+       (ob-chatgpt-shell--relevant-source-blocks-before-current
+        (if (equal context-name "t")
+            nil ;; mean all blocks before
+          context-name))))
     (list
      (cons :context (append
                      (nreverse context)
