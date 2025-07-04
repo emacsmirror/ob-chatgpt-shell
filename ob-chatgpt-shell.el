@@ -121,7 +121,13 @@ This function is called by `org-babel-execute-src-block'"
                             (chatgpt-shell-model-version))
                :temperature (map-elt params :temperature)))
         (chatgpt-shell-post
-         :context (map-elt context :context)
+         :context (if chatgpt-shell-include-local-file-link-content
+                      (mapcar (lambda (item)
+                                (cons (markdown-overlays-expand-local-links
+                                       (car item))
+                                      (cdr item)))
+                              (map-elt context :context))
+                    (map-elt context :context))
          :system-prompt (or system-prompt (map-elt context :system-prompt))
          :version (or (map-elt params :version)
                       (chatgpt-shell-model-version))
